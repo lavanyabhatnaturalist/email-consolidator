@@ -24,22 +24,6 @@ def check_authentication():
         pass
     return False, None
 
-# Simple password protection (until you set up proper auth)
-def simple_auth():
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-    
-    if not st.session_state.authenticated:
-        st.title("🔐 CNC Email Consolidator - Login")
-        password = st.text_input("Enter access password:", type="password")
-        if st.button("Login"):
-            if password == "naturalist.school@emacon2026":
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
-                st.error("❌ Incorrect password")
-        st.stop()
-
 # --- HELPER FUNCTIONS ---
 def extract_sheet_id_and_gid(url):
     """Extract spreadsheet ID and sheet GID from Google Sheets URL"""
@@ -103,112 +87,78 @@ def process_dataframes(dfs):
 
 # --- MAIN APP ---
 def main():
-    simple_auth()  # Enable authentication
-    
     st.title("🌿 City Nature Challenge - Email Consolidator")
-    st.markdown("Upload CSV files or paste Google Sheets links to extract consolidated email lists")
+    st.markdown("Extract consolidated email lists from CNC registration forms")
     
     # Initialize session state
     if 'dataframes' not in st.session_state:
         st.session_state.dataframes = []
     
-    # Create tabs for different input methods
-    tab1, tab2 = st.tabs(["📤 Upload CSV Files", "🔗 Google Sheets Links"])
+    st.divider()
     
-    # --- TAB 1: CSV Upload ---
-    with tab1:
-        st.subheader("Upload CSV Files")
-        uploaded_files = st.file_uploader(
-            "Choose CSV file(s)",
-            type=['csv'],
-            accept_multiple_files=True,
-            help="You can upload multiple CSV files at once"
-        )
-        
-        if uploaded_files:
-            temp_dfs = []
-            for file in uploaded_files:
-                try:
-                    df = pd.read_csv(file)
-                    temp_dfs.append(df)
-                    st.success(f"✅ Loaded: {file.name} ({len(df)} rows)")
-                except Exception as e:
-                    st.error(f"❌ Error reading {file.name}: {str(e)}")
-            
-            if temp_dfs and st.button("Add CSV Files to Processing Queue", key="add_csv"):
-                st.session_state.dataframes.extend(temp_dfs)
-                st.success(f"✅ Added {len(temp_dfs)} file(s) to queue!")
+    # --- FIXED GOOGLE SHEETS ---
+    st.subheader("📊 CNC Registration Sheets")
+    st.info("Click below to load the latest registration data")
     
-    # --- TAB 2: Google Sheets ---
-    with tab2:
-        st.subheader("Google Sheets URLs")
-        st.info("📝 Make sure sheets are set to 'Anyone with the link can view'")
-        
-        # Input for multiple URLs
-        sheet_urls_input = st.text_area(
-            "Paste Google Sheets URLs (one per line)",
-            height=150,
-            placeholder="https://docs.google.com/spreadsheets/d/...\nhttps://docs.google.com/spreadsheets/d/..."
-        )
-        
-        if st.button("Add Google Sheets to Processing Queue", key="add_sheets"):
-            urls = [url.strip() for url in sheet_urls_input.split('\n') if url.strip()]
-            if urls:
-                for url in urls:
+    # Your fixed Google Sheets URLs - REPLACE THESE!
+    FIXED_SHEET_URLS = [
+        "https://docs.google.com/spreadsheets/d/YOUR_SHEET_1_ID/edit#gid=0",
+        "https://docs.google.com/spreadsheets/d/YOUR_SHEET_2_ID/edit#gid=0",
+    ]
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        if st.button("🔄 Load Latest Registration Data", type="primary", use_container_width=True):
+            st.session_state.dataframes = []  # Clear old data
+            with st.spinner("Loading registration data..."):
+                loaded_count = 0
+                for i, url in enumerate(FIXED_SHEET_URLS):
                     df = load_google_sheet(url)
                     if df is not None:
                         st.session_state.dataframes.append(df)
-                        st.success(f"✅ Loaded sheet ({len(df)} rows)")
-                st.success(f"✅ Added {len(urls)} sheet(s) to queue!")
-            else:
-                st.warning("⚠️ Please paste at least one URL")
+                        loaded_count += 1
+                        st.success(f"✅ Loaded Sheet {i+1} ({len(df)} rows)")
+                
+                if loaded_count > 0:
+                    st.success(f"✅ Successfully loaded {loaded_count} sheet(s)!")
+                    # Auto-process
+                    with st.spinner("Processing..."):
+                        result_df = process_dataframes(st.session_state.dataframes)
+                        if result_df is not None and not result_df.empty:
+                            st.session_state.result_df = result_df
+                            st.success(f"✅ Found {len(result_df)} unique emails!")
+                else:
+                    st.error("❌ Failed to load sheets")
     
-    # --- PROCESSING SECTION ---
-    st.divider()
+    with col2:
+        if st.button("🗑️ Clear Data", use_container_width=True):
+            st.session_state.dataframes = []
+            if 'result_df' in st.session_state:
+                del st.session_state.result_df
+            st.rerun()
     
-    if st.session_state.dataframes:
-        st.subheader(f"📊 Data Queue: {len(st.session_state.dataframes)} file(s) loaded")
-        
-        col1, col2 = st.columns([1, 1])
-        
-        with col1:
-            if st.button("🚀 Process & Extract Emails", type="primary", use_container_width=True):
-                with st.spinner("Processing..."):
-                    result_df = process_dataframes(st.session_state.dataframes)
-                    
-                    if result_df is not None and not result_df.empty:
-                        st.session_state.result_df = result_df
-                        st.success(f"✅ Found {len(result_df)} unique emails!")
-                    else:
-                        st.error("❌ No valid data found")
-        
-        with col2:
-            if st.button("🗑️ Clear Queue", use_container_width=True):
-                st.session_state.dataframes = []
-                if 'result_df' in st.session_state:
-                    del st.session_state.result_df
-                st.rerun()
-    
-    # --- RESULTS SECTION ---
+    # --- RESULTS SECTION (keep as is, but with country default) ---
     if 'result_df' in st.session_state:
         st.divider()
         st.subheader("📋 Results")
         
         result_df = st.session_state.result_df
         
-        # Sorting options
+        # Sorting options with COUNTRY as default
         col1, col2, col3 = st.columns([2, 2, 2])
         
         with col1:
-            # Determine available columns for sorting
             available_cols = result_df.columns.tolist()
-            sort_column = st.selectbox("Sort by:", available_cols, index=0 if 'Country/Region Name' in available_cols else 0)
+            # Default to Country/Region Name
+            default_sort = 'Country/Region Name' if 'Country/Region Name' in available_cols else available_cols[0]
+            default_index = available_cols.index(default_sort) if default_sort in available_cols else 0
+            sort_column = st.selectbox("Sort by:", available_cols, index=default_index)
         
         with col2:
             sort_order = st.radio("Order:", ["Ascending", "Descending"], horizontal=True)
         
         with col3:
-            # Filter by country (if column exists)
             if 'Country/Region Name' in result_df.columns:
                 countries = ['All'] + sorted(result_df['Country/Region Name'].dropna().unique().tolist())
                 selected_country = st.selectbox("Filter by Country:", countries)
@@ -252,7 +202,6 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            # Download full data
             csv = display_df.to_csv(index=False)
             st.download_button(
                 label="📥 Download Full Data (CSV)",
@@ -263,7 +212,6 @@ def main():
             )
         
         with col2:
-            # Download emails only
             email_only_df = display_df[['Full Name', 'Email'] if 'Full Name' in display_df.columns else ['Email']]
             csv_emails = email_only_df.to_csv(index=False)
             st.download_button(
@@ -275,7 +223,7 @@ def main():
             )
     
     else:
-        st.info("👆 Upload files or add Google Sheets links above to get started")
+        st.info("👆 Click 'Load Latest Registration Data' to get started")
 
 if __name__ == "__main__":
     main()
