@@ -33,7 +33,7 @@ def simple_auth():
         st.title("🔐 CNC Email Consolidator - Login")
         password = st.text_input("Enter access password:", type="password")
         if st.button("Login"):
-            if password == "cnc2026":  # Change this password!
+            if password == "naturalist.school@emacon2026":
                 st.session_state.authenticated = True
                 st.rerun()
             else:
