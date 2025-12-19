@@ -102,8 +102,8 @@ def main():
     
     # Your fixed Google Sheets URLs - REPLACE THESE!
     FIXED_SHEET_URLS = [
-        "https://docs.google.com/spreadsheets/d/YOUR_SHEET_1_ID/edit#gid=0",
-        "https://docs.google.com/spreadsheets/d/YOUR_SHEET_2_ID/edit#gid=0",
+        "https://docs.google.com/spreadsheets/d/1_Sz7pJgOHwzkhepIYS05Z-azYylI0lpjzdisFwcEo6U/edit?gid=1692911100#gid=1692911100",
+        "https://docs.google.com/spreadsheets/d/1mWFNjaYJ-CAM63jJiKlnRAVC7sdzekHFajzTIGR56Mk/edit?gid=1473544593#gid=1473544593",
     ]
     
     col1, col2 = st.columns([2, 1])
