@@ -89,7 +89,7 @@ def process_dataframes(dfs):
 def main():
     st.title("🌿 City Nature Challenge - Email Consolidator")
     st.markdown("Extract consolidated email lists from CNC registration forms")
-    
+
     # Initialize session state
     if 'dataframes' not in st.session_state:
         st.session_state.dataframes = []
@@ -139,19 +139,23 @@ def main():
             st.rerun()
     
     # --- RESULTS SECTION (keep as is, but with country default) ---
+        # --- RESULTS SECTION ---
     if 'result_df' in st.session_state:
         st.divider()
         st.subheader("📋 Results")
         
         result_df = st.session_state.result_df
         
+        # Define country column name
+        COUNTRY_COL = 'Country/Region Name: Please choose your country/region from the list below. If your project takes place in multiple countries, please select the country with the largest land area.'
+        
         # Sorting options with COUNTRY as default
         col1, col2, col3 = st.columns([2, 2, 2])
         
         with col1:
             available_cols = result_df.columns.tolist()
-            # Default to Country/Region Name
-            default_sort = 'Country/Region Name' if 'Country/Region Name' in available_cols else available_cols[0]
+            # Default to Country column
+            default_sort = COUNTRY_COL if COUNTRY_COL in available_cols else available_cols[0]
             default_index = available_cols.index(default_sort) if default_sort in available_cols else 0
             sort_column = st.selectbox("Sort by:", available_cols, index=default_index)
         
@@ -159,8 +163,8 @@ def main():
             sort_order = st.radio("Order:", ["Ascending", "Descending"], horizontal=True)
         
         with col3:
-            if 'Country/Region Name' in result_df.columns:
-                countries = ['All'] + sorted(result_df['Country/Region Name'].dropna().unique().tolist())
+            if COUNTRY_COL in result_df.columns:
+                countries = ['All'] + sorted(result_df[COUNTRY_COL].dropna().unique().tolist())
                 selected_country = st.selectbox("Filter by Country:", countries)
             else:
                 selected_country = 'All'
@@ -169,7 +173,7 @@ def main():
         display_df = result_df.copy()
         
         if selected_country != 'All':
-            display_df = display_df[display_df['Country/Region Name'] == selected_country]
+            display_df = display_df[display_df[COUNTRY_COL] == selected_country]
         
         display_df = display_df.sort_values(
             by=sort_column,
@@ -179,12 +183,12 @@ def main():
         # Display statistics
         col1, col2, col3 = st.columns(3)
         col1.metric("Total Unique Emails", len(display_df))
-        col2.metric("Total Countries", display_df['Country/Region Name'].nunique() if 'Country/Region Name' in display_df.columns else "N/A")
+        col2.metric("Total Countries", display_df[COUNTRY_COL].nunique() if COUNTRY_COL in display_df.columns else "N/A")
         col3.metric("New Organizers", len(display_df[display_df.get('Are you a new or returning organizer for the 2026 City Nature Challenge?', '') == 'I am a new organizer']) if 'Are you a new or returning organizer for the 2026 City Nature Challenge?' in display_df.columns else "N/A")
         
         # Select columns to display
         display_columns = []
-        available_display_cols = ['Full Name', 'Email', 'Country/Region Name', 'City Name', 'iNaturalist Username', 'Organization (if applicable)']
+        available_display_cols = ['Full Name', 'Email', COUNTRY_COL, 'City Name: This is the name of the nearest or largest metropolitan area anchoring your project (it may be a large city or a small rural town). If multiple cities are listed, please separate each city with a semi colon (;). Example: Minneapolis; St. Paul', 'iNaturalist Username', 'Organization (if applicable)']
         
         for col in available_display_cols:
             if col in display_df.columns:
@@ -197,16 +201,53 @@ def main():
             height=400
         )
         
-        # Download buttons
+        # Copy and Download Section
         st.divider()
-        col1, col2 = st.columns(2)
+        
+        # Prepare email lists for copying
+        all_emails = display_df['Email'].tolist()
+        all_emails_string = '; '.join(all_emails)  # Gmail format
+        all_emails_comma = ', '.join(all_emails)   # Alternative format
+        
+        # Email list with names for reference
+        emails_with_names = display_df[['Full Name', 'Email']].apply(
+            lambda x: f"{x['Full Name']} <{x['Email']}>", axis=1
+        ).tolist() if 'Full Name' in display_df.columns else all_emails
+        emails_with_names_string = '; '.join(emails_with_names)
+        
+        st.subheader("📧 Copy Emails for Gmail")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**Emails Only (Semicolon)**")
+            st.code(all_emails_string, language=None)
+            st.caption(f"📋 {len(all_emails)} emails • Ready for Gmail BCC")
+            
+        with col2:
+            st.markdown("**With Names**")
+            st.code(emails_with_names_string, language=None)
+            st.caption(f"📋 Format: Name <email>")
+        
+        with col3:
+            st.markdown("**Comma Separated**")
+            st.code(all_emails_comma, language=None)
+            st.caption(f"📋 Alternative format")
+        
+        st.info("💡 **Tip:** Click inside any box above, press Ctrl+A (Cmd+A on Mac) to select all, then Ctrl+C (Cmd+C) to copy")
+        
+        st.divider()
+        
+        # Download buttons
+        st.subheader("📥 Download Options")
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             csv = display_df.to_csv(index=False)
             st.download_button(
-                label="📥 Download Full Data (CSV)",
+                label="📥 Download Full Data",
                 data=csv,
-                file_name="cnc_email_list_full.csv",
+                file_name=f"cnc_emails_{selected_country.lower().replace(' ', '_')}.csv" if selected_country != 'All' else "cnc_emails_all.csv",
                 mime="text/csv",
                 use_container_width=True
             )
@@ -215,10 +256,21 @@ def main():
             email_only_df = display_df[['Full Name', 'Email'] if 'Full Name' in display_df.columns else ['Email']]
             csv_emails = email_only_df.to_csv(index=False)
             st.download_button(
-                label="📧 Download Emails Only (CSV)",
+                label="📧 Emails + Names CSV",
                 data=csv_emails,
-                file_name="cnc_emails_only.csv",
+                file_name=f"cnc_emails_only_{selected_country.lower().replace(' ', '_')}.csv" if selected_country != 'All' else "cnc_emails_only.csv",
                 mime="text/csv",
+                use_container_width=True
+            )
+        
+        with col3:
+            # Plain text email list
+            plain_emails = '\n'.join(all_emails)
+            st.download_button(
+                label="📄 Plain Text List",
+                data=plain_emails,
+                file_name=f"cnc_emails_{selected_country.lower().replace(' ', '_')}.txt" if selected_country != 'All' else "cnc_emails.txt",
+                mime="text/plain",
                 use_container_width=True
             )
     
