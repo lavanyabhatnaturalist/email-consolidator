@@ -67,23 +67,28 @@ def clean_email(email):
     return None
 
 def process_dataframes(dfs):
-    """Combine and deduplicate dataframes"""
     if not dfs:
         return None
-    
-    # Combine all dataframes
+
     combined_df = pd.concat(dfs, ignore_index=True)
-    
+
     # Clean emails
     combined_df['Email'] = combined_df['Email'].apply(clean_email)
-    
-    # Remove rows with no email
     combined_df = combined_df[combined_df['Email'].notna()]
-    
-    # Remove duplicates based on email (keep first occurrence)
+
+    # 🔹 Detect country column automatically
+    country_cols = [c for c in combined_df.columns if "Country" in c]
+
+    if country_cols:
+        combined_df['Country'] = combined_df[country_cols[0]]
+    else:
+        combined_df['Country'] = "Unknown"
+
+    # Deduplicate by email
     unique_df = combined_df.drop_duplicates(subset=['Email'], keep='first')
-    
+
     return unique_df
+
 
 # --- MAIN APP ---
 def main():
@@ -148,7 +153,8 @@ def main():
         result_df = st.session_state.result_df
         
         # EXACT column name from your sheets
-        COUNTRY_COL = 'Country/Region Name: Please choose your country/region from the list below. If your project takes place in multiple countries, please select the country with the largest land area.'
+        COUNTRY_COL = 'Country'
+
         
         # Verify column exists
         if COUNTRY_COL not in result_df.columns:
@@ -201,12 +207,13 @@ def main():
         
         # Select EXACT columns to display (in order you want)
         display_columns = [
-            'Full Name',
-            'Email',
-            COUNTRY_COL,
-            'City Name: This is the name of the nearest or largest metropolitan area anchoring your project (it may be a large city or a small rural town). If multiple cities are listed, please separate each city with a semi colon (;). Example: Minneapolis; St. Paul',
-            'iNaturalist Username',
-        ]
+    'Full Name',
+    'Email',
+    'Country',
+    'City Name: This is the name of the nearest or largest metropolitan area anchoring your project (it may be a large city or a small rural town). If multiple cities are listed, please separate each city with a semi colon (;). Example: Minneapolis; St. Paul',
+    'iNaturalist Username',
+]
+
         
         # Only keep columns that exist in the dataframe
         display_columns = [col for col in display_columns if col in result_df.columns]
@@ -280,7 +287,7 @@ def main():
                 label="📄 Plain Email List",
                 data=plain_emails,
                 file_name=filename_txt,
-                mime="text/plain",
+                mime="text/plain",  
                 use_container_width=True
             )
     
