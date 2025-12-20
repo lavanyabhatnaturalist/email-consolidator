@@ -23,15 +23,57 @@ def convert_to_csv_url(sheet_url):
         return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
     return None
 
-def load_google_sheet(url, sheet_name):
-    """Load data from Google Sheets URL"""
+def load_google_sheet_individual(url):
+    """Load individual registration data"""
     csv_url = convert_to_csv_url(url)
     if csv_url:
         try:
             df = pd.read_csv(csv_url)
-            df['Source'] = sheet_name  # Add source column
             return df
         except Exception as e:
+            return None
+    return None
+
+def load_google_sheet_city(url):
+    """Load city registration data and extract organizer info"""
+    csv_url = convert_to_csv_url(url)
+    if csv_url:
+        try:
+            df = pd.read_csv(csv_url)
+            # Skip first row (headers are malformed)
+            df = df.iloc[1:].reset_index(drop=True)
+            
+            # Extract organizer data from multiple columns
+            organizers = []
+            organizer_cols = [
+                ('Unnamed: 9', 'Unnamed: 10'),   # Organizer 1
+                ('Unnamed: 11', 'Unnamed: 12'),  # Organizer 2
+                ('Unnamed: 13', 'Unnamed: 14'),  # Organizer 3
+                ('Unnamed: 15', 'Unnamed: 16'),  # Organizer 4
+                ('Unnamed: 17', 'Unnamed: 18'),  # Organizer 5
+                ('Unnamed: 19', 'Unnamed: 20'),  # Organizer 6
+                ('Unnamed: 21', 'Unnamed: 22'),  # Organizer 7
+            ]
+            
+            for _, row in df.iterrows():
+                city_name = row['Unnamed: 1']
+                country = row['If you have changes, additions, or edits to other columns, please leave a comment in the cell where you would like a change and our team can make that change for you. Thank you, The CNC Global Organizing Team.']
+                
+                for name_col, email_col in organizer_cols:
+                    name = row.get(name_col)
+                    email = row.get(email_col)
+                    
+                    if pd.notna(email) and '@' in str(email):
+                        organizers.append({
+                            'Full Name': name if pd.notna(name) else 'Unknown',
+                            'Email': email,
+                            'Country': country if pd.notna(country) else 'Unknown',
+                            'City Name: This is the name of the nearest or largest metropolitan area anchoring your project (it may be a large city or a small rural town). If multiple cities are listed, please separate each city with a semi colon (;). Example: Minneapolis; St. Paul': city_name if pd.notna(city_name) else 'Unknown'
+                        })
+            
+            return pd.DataFrame(organizers)
+        except Exception as e:
+            st.error(f"Error loading City sheet: {e}")
             return None
     return None
 
@@ -44,16 +86,51 @@ def clean_email(email):
         return email
     return None
 
-def process_dataframes(dfs):
-    """Combine and clean dataframes"""
+def process_dataframes(df_individual, df_city):
+    """Combine and clean dataframes with proper source tracking"""
+    if df_individual is None and df_city is None:
+        return None
+    
+    # Track which emails appear in which sheets
+    individual_emails = set()
+    city_emails = set()
+    
+    if df_individual is not None:
+        df_individual['Email_clean'] = df_individual['Email'].apply(clean_email)
+        individual_emails = set(df_individual['Email_clean'].dropna())
+    
+    if df_city is not None:
+        df_city['Email_clean'] = df_city['Email'].apply(clean_email)
+        city_emails = set(df_city['Email_clean'].dropna())
+    
+    # Determine source for each email
+    emails_in_both = individual_emails & city_emails
+    
+    # Add source column to each dataframe
+    if df_individual is not None:
+        df_individual['Source'] = df_individual['Email_clean'].apply(
+            lambda x: 'Both Sheets' if x in emails_in_both else 'Individual Registration'
+        )
+    
+    if df_city is not None:
+        df_city['Source'] = df_city['Email_clean'].apply(
+            lambda x: 'Both Sheets' if x in emails_in_both else 'City Registration'
+        )
+    
+    # Combine dataframes
+    dfs = []
+    if df_individual is not None:
+        dfs.append(df_individual)
+    if df_city is not None:
+        dfs.append(df_city)
+    
     if not dfs:
         return None
     
     combined_df = pd.concat(dfs, ignore_index=True)
     
-    # Clean emails
-    combined_df['Email'] = combined_df['Email'].apply(clean_email)
-    combined_df = combined_df[combined_df['Email'].notna()]
+    # Clean and filter
+    combined_df = combined_df[combined_df['Email_clean'].notna()]
     
     # Detect country column
     country_cols = [c for c in combined_df.columns if "Country" in c]
@@ -62,9 +139,17 @@ def process_dataframes(dfs):
     else:
         combined_df['Country'] = "Unknown"
     
-    # Deduplicate by email, sort by Country then Full Name
-    unique_df = combined_df.drop_duplicates(subset=['Email'], keep='first')
+    # Deduplicate by email, keeping first occurrence (preserves "Both Sheets" when applicable)
+    # Sort by Source first so "Both Sheets" comes first
+    combined_df['Source_priority'] = combined_df['Source'].apply(lambda x: 0 if x == 'Both Sheets' else 1)
+    combined_df = combined_df.sort_values('Source_priority')
+    unique_df = combined_df.drop_duplicates(subset=['Email_clean'], keep='first')
+    
+    # Final sort by Country then Full Name
     unique_df = unique_df.sort_values(by=['Country', 'Full Name'], ascending=[True, True])
+    
+    # Drop helper columns
+    unique_df = unique_df.drop(['Email_clean', 'Source_priority'], axis=1)
     
     return unique_df
 
@@ -78,11 +163,9 @@ def main():
         st.write("")  # Spacing
         load_button = st.button("Load Data", type="primary", use_container_width=True)
     
-    # Fixed Google Sheets URLs with names
-    SHEETS = [
-        ("Individual Registration", "https://docs.google.com/spreadsheets/d/1_Sz7pJgOHwzkhepIYS05Z-azYylI0lpjzdisFwcEo6U/edit?gid=1692911100#gid=1692911100"),
-        ("City Registration", "https://docs.google.com/spreadsheets/d/1mWFNjaYJ-CAM63jJiKlnRAVC7sdzekHFajzTIGR56Mk/edit?gid=1473544593#gid=1473544593"),
-    ]
+    # Fixed Google Sheets URLs
+    INDIVIDUAL_URL = "https://docs.google.com/spreadsheets/d/1_Sz7pJgOHwzkhepIYS05Z-azYylI0lpjzdisFwcEo6U/edit?gid=1692911100#gid=1692911100"
+    CITY_URL = "https://docs.google.com/spreadsheets/d/1mWFNjaYJ-CAM63jJiKlnRAVC7sdzekHFajzTIGR56Mk/edit?gid=1473544593#gid=1473544593"
     
     # Initialize session state
     if 'result_df' not in st.session_state:
@@ -91,14 +174,11 @@ def main():
     # Load data when button clicked
     if load_button:
         with st.spinner("Loading..."):
-            dataframes = []
-            for sheet_name, url in SHEETS:
-                df = load_google_sheet(url, sheet_name)
-                if df is not None:
-                    dataframes.append(df)
+            df_individual = load_google_sheet_individual(INDIVIDUAL_URL)
+            df_city = load_google_sheet_city(CITY_URL)
             
-            if dataframes:
-                result_df = process_dataframes(dataframes)
+            if df_individual is not None or df_city is not None:
+                result_df = process_dataframes(df_individual, df_city)
                 if result_df is not None and not result_df.empty:
                     st.session_state.result_df = result_df
                     st.success(f"✓ Loaded {len(result_df)} unique emails from {result_df['Country'].nunique()} countries")
@@ -128,12 +208,17 @@ def main():
         if selected_country != 'All':
             display_df = display_df[display_df['Country'] == selected_country]
         
-        # Display columns: Name, Email, Source, Country only
+        # Display columns: Name, Email, Source, Country only (NO INDEX)
         display_columns = ['Full Name', 'Email', 'Source', 'Country']
         display_columns = [col for col in display_columns if col in display_df.columns]
         
-        # Show table
-        st.dataframe(display_df[display_columns], use_container_width=True, height=400)
+        # Show table WITHOUT index column
+        st.dataframe(
+            display_df[display_columns].reset_index(drop=True), 
+            use_container_width=True, 
+            height=400,
+            hide_index=True  # This removes the serial number column
+        )
         
         # Download section
         st.markdown("---")
