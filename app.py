@@ -3,7 +3,7 @@ import pandas as pd
 import re
 
 # Minimal page config
-st.set_page_config(page_title="Email Consolidator", layout="wide")
+st.set_page_config(page_title="CNC 2026 Email Consolidator", layout="wide")
 
 # --- HELPER FUNCTIONS ---
 def extract_sheet_id_and_gid(url):
@@ -158,7 +158,7 @@ def main():
     # Title and Load Button side by side
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.title("Email Consolidator")
+        st.title("CNC 2026 Email Consolidator")
     with col2:
         st.write("")  # Spacing
         load_button = st.button("Load Data", type="primary", use_container_width=True)
