@@ -201,8 +201,9 @@ def main():
             st.metric("Unique Emails", total_emails)
         
         with col3:
-            st.metric("Countries", result_df['Country'].nunique())
-        
+           total_countries = (result_df['Country'].nunique()if selected_country == 'All'else 1)
+           st.metric("Countries Selected", total_countries)
+    
         # Apply filter
         display_df = result_df.copy()
         if selected_country != 'All':
